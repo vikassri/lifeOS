@@ -18,6 +18,9 @@
 - Session cookie: HttpOnly, Secure, SameSite=Lax — no sensitive data in localStorage or URL
 - TypeScript strict mode: `true`
 - No `any` types allowed
+- AI/LLM API calls: use server-side API routes only — no LLM API keys in browser
+- Agent configs stored in Firestore under `users/{userId}/agents/{agentId}` — never hardcoded
+- LLM provider: Google Vertex AI (Gemini) as primary; OpenAI-compatible via env var as fallback
 - Every API route must pass the 8-step middleware chain before business logic
 - Audit log: written on every auth event, immutable — never deleted
 - Tests must pass before each commit
@@ -2904,4 +2907,1254 @@ openssl rand -hex 32 | \
 gcloud run deploy life-os-prod \
   --image asia-southeast1-docker.pkg.dev/YOUR_PROJECT/life-os/vault:latest \
   --region asia-southeast1
+```
+
+---
+
+## Task 17: AI Chatbot & Configurable Agent System
+
+**Files:**
+- Create: `lib/ai/provider.ts`              — LLM provider abstraction (Gemini / OpenAI-compat)
+- Create: `lib/ai/agents.ts`                — Agent config CRUD (Firestore)
+- Create: `lib/ai/chat.ts`                  — Chat session logic
+- Create: `lib/ai/types.ts`                 — Shared AI types
+- Create: `app/api/v1/chat/route.ts`        — Streaming chat API endpoint
+- Create: `app/api/v1/agents/route.ts`      — Agent CRUD API
+- Create: `app/api/v1/agents/[id]/route.ts` — Agent get/update/delete
+- Create: `app/(vault)/chat/page.tsx`       — Chatbot UI page
+- Create: `app/(vault)/agents/page.tsx`     — Agent management UI
+- Create: `components/chat/ChatWindow.tsx`  — Main chat component
+- Create: `components/chat/MessageBubble.tsx`
+- Create: `components/chat/AgentSelector.tsx`
+- Create: `components/agents/AgentCard.tsx`
+- Create: `components/agents/AgentForm.tsx`
+- Create: `tests/unit/ai/agents.test.ts`
+- Create: `tests/unit/ai/provider.test.ts`
+
+**Interfaces:**
+- Consumes: `withApiGuard` from `lib/middleware/api-guard`, `getFirestoreDb` from `lib/db/client`, `SessionData` from `lib/auth/session`
+- Produces:
+  - `AgentConfig` interface
+  - `streamChat(agentId, messages, userId): AsyncIterable<string>`
+  - `createAgent(userId, config): Promise<AgentConfig>`
+  - `listAgents(userId): Promise<AgentConfig[]>`
+  - `updateAgent(userId, id, patch): Promise<AgentConfig>`
+  - `deleteAgent(userId, id): Promise<void>`
+  - `GET /api/v1/agents` — list agents
+  - `POST /api/v1/agents` — create agent
+  - `GET /api/v1/agents/[id]` — get agent
+  - `PUT /api/v1/agents/[id]` — update agent
+  - `DELETE /api/v1/agents/[id]` — delete agent
+  - `POST /api/v1/chat` — streaming chat (SSE)
+
+---
+
+### Agent Config Schema
+
+Each agent is fully configurable by the user:
+
+```typescript
+interface AgentConfig {
+  id: string
+  userId: string
+  name: string                         // Display name e.g. "Research Assistant"
+  description: string                  // What this agent does
+  systemPrompt: string                 // Full system prompt / persona
+  model: string                        // e.g. "gemini-1.5-pro", "gpt-4o", "gemini-2.0-flash"
+  temperature: number                  // 0.0 – 2.0
+  maxTokens: number                    // Response length cap
+  contextWindowSize: number            // How many past messages to include
+  tools: AgentTool[]                   // Enabled tools (web_search, calculator, etc.)
+  isDefault: boolean                   // Show as default in chat selector
+  createdAt: number
+  updatedAt: number
+  // Privacy: never stored in logs, never sent to analytics
+}
+
+type AgentTool = 'web_search' | 'calculator' | 'date_time' | 'vault_search'
+```
+
+---
+
+### Built-in Default Agents (created on first login)
+
+| Agent | System Prompt Purpose | Model |
+|-------|----------------------|-------|
+| Personal Assistant | General tasks, reminders, planning | gemini-2.0-flash |
+| Research Helper | Deep research, summarize documents | gemini-1.5-pro |
+| Finance Advisor | Investment analysis, portfolio queries | gemini-1.5-pro |
+| Journal Companion | Reflective journaling prompts, mood analysis | gemini-2.0-flash |
+| Code Assistant | Code review, debugging, architecture | gemini-2.0-flash |
+
+---
+
+- [ ] **Step 1: Write failing tests**
+
+Create `tests/unit/ai/agents.test.ts`:
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('@/lib/db/client', () => ({
+  getFirestoreDb: vi.fn(() => ({
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => ({
+        set: vi.fn(async () => {}),
+        get: vi.fn(async () => ({ exists: true, data: () => mockAgent, id: 'agent-1' })),
+        update: vi.fn(async () => {}),
+        delete: vi.fn(async () => {}),
+      })),
+      where: vi.fn(() => ({
+        orderBy: vi.fn(() => ({
+          get: vi.fn(async () => ({ docs: [{ id: 'agent-1', data: () => mockAgent }] })),
+        })),
+      })),
+    })),
+  })),
+}))
+
+const mockAgent = {
+  id: 'agent-1',
+  userId: 'user-123',
+  name: 'Test Agent',
+  description: 'A test agent',
+  systemPrompt: 'You are a helpful assistant.',
+  model: 'gemini-2.0-flash',
+  temperature: 0.7,
+  maxTokens: 2048,
+  contextWindowSize: 10,
+  tools: [],
+  isDefault: false,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+}
+
+import { createAgent, listAgents, deleteAgent } from '@/lib/ai/agents'
+
+describe('Agent CRUD', () => {
+  it('createAgent returns AgentConfig with id', async () => {
+    const agent = await createAgent('user-123', {
+      name: 'Test Agent',
+      description: 'A test agent',
+      systemPrompt: 'You are a helpful assistant.',
+      model: 'gemini-2.0-flash',
+      temperature: 0.7,
+      maxTokens: 2048,
+      contextWindowSize: 10,
+      tools: [],
+      isDefault: false,
+    })
+    expect(agent).toHaveProperty('id')
+    expect(agent.name).toBe('Test Agent')
+    expect(agent.userId).toBe('user-123')
+  })
+
+  it('listAgents returns array', async () => {
+    const agents = await listAgents('user-123')
+    expect(Array.isArray(agents)).toBe(true)
+  })
+})
+```
+
+Create `tests/unit/ai/provider.test.ts`:
+
+```typescript
+import { describe, it, expect } from 'vitest'
+import { buildMessages, trimToContextWindow } from '@/lib/ai/provider'
+import type { ChatMessage } from '@/lib/ai/types'
+
+describe('buildMessages', () => {
+  it('prepends system prompt to message array', () => {
+    const msgs: ChatMessage[] = [{ role: 'user', content: 'Hello' }]
+    const result = buildMessages('You are helpful.', msgs)
+    expect(result[0]).toEqual({ role: 'system', content: 'You are helpful.' })
+    expect(result[1]).toEqual({ role: 'user', content: 'Hello' })
+  })
+})
+
+describe('trimToContextWindow', () => {
+  it('keeps only the last N messages', () => {
+    const msgs: ChatMessage[] = Array.from({ length: 20 }, (_, i) => ({
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: `Message ${i}`,
+    }))
+    const trimmed = trimToContextWindow(msgs, 5)
+    expect(trimmed).toHaveLength(5)
+    expect(trimmed[0]?.content).toBe('Message 15')
+  })
+
+  it('returns all messages when under window', () => {
+    const msgs: ChatMessage[] = [{ role: 'user', content: 'Hi' }]
+    expect(trimToContextWindow(msgs, 10)).toHaveLength(1)
+  })
+})
+```
+
+- [ ] **Step 2: Run tests — expect FAIL**
+
+```bash
+npx vitest run tests/unit/ai/
+```
+
+Expected: FAIL — modules not found.
+
+- [ ] **Step 3: Create `lib/ai/types.ts`**
+
+```typescript
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+export type AgentTool = 'web_search' | 'calculator' | 'date_time' | 'vault_search'
+
+export interface AgentConfig {
+  id: string
+  userId: string
+  name: string
+  description: string
+  systemPrompt: string
+  model: string
+  temperature: number
+  maxTokens: number
+  contextWindowSize: number
+  tools: AgentTool[]
+  isDefault: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export type AgentConfigInput = Omit<AgentConfig, 'id' | 'userId' | 'createdAt' | 'updatedAt'>
+
+export interface ChatRequest {
+  agentId: string
+  messages: ChatMessage[]
+}
+
+// Safe agent view — strips internal userId for API responses
+export type AgentConfigPublic = Omit<AgentConfig, 'userId'>
+```
+
+- [ ] **Step 4: Create `lib/ai/provider.ts`**
+
+```typescript
+import type { ChatMessage } from './types'
+
+// Supports Google Vertex AI (Gemini) and OpenAI-compatible APIs
+// Provider selection is based on the model name prefix
+
+function getVertexConfig() {
+  const projectId = process.env['GCP_PROJECT_ID']
+  const location = process.env['GCP_REGION'] ?? 'asia-southeast1'
+  if (!projectId) throw new Error('GCP_PROJECT_ID is not configured')
+  return { projectId, location }
+}
+
+function getOpenAICompatConfig() {
+  const apiKey = process.env['OPENAI_COMPATIBLE_API_KEY'] ?? ''
+  const baseUrl = process.env['OPENAI_COMPATIBLE_BASE_URL'] ?? 'https://api.openai.com/v1'
+  return { apiKey, baseUrl }
+}
+
+export function buildMessages(
+  systemPrompt: string,
+  messages: ChatMessage[],
+): ChatMessage[] {
+  return [{ role: 'system', content: systemPrompt }, ...messages]
+}
+
+export function trimToContextWindow(
+  messages: ChatMessage[],
+  windowSize: number,
+): ChatMessage[] {
+  if (messages.length <= windowSize) return messages
+  return messages.slice(messages.length - windowSize)
+}
+
+export async function* streamChatCompletion(
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens: number,
+): AsyncGenerator<string> {
+  const isGemini = model.startsWith('gemini-')
+
+  if (isGemini) {
+    yield* streamGemini(model, messages, temperature, maxTokens)
+  } else {
+    yield* streamOpenAICompat(model, messages, temperature, maxTokens)
+  }
+}
+
+async function* streamGemini(
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens: number,
+): AsyncGenerator<string> {
+  const { projectId, location } = getVertexConfig()
+  const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:streamGenerateContent`
+
+  // Get access token via Application Default Credentials
+  const { GoogleAuth } = await import('google-auth-library')
+  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
+  const client = await auth.getClient()
+  const token = await client.getAccessToken()
+
+  // Convert messages to Gemini format
+  const geminiContents = messages
+    .filter(m => m.role !== 'system')
+    .map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }))
+
+  const systemInstruction = messages.find(m => m.role === 'system')?.content
+
+  const body = {
+    contents: geminiContents,
+    ...(systemInstruction && { systemInstruction: { parts: [{ text: systemInstruction }] } }),
+    generationConfig: {
+      temperature,
+      maxOutputTokens: maxTokens,
+    },
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token.token}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Gemini API error: ${response.status}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    // Parse NDJSON chunks from Gemini streaming response
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed === '[' || trimmed === ']' || trimmed === ',') continue
+      try {
+        const clean = trimmed.replace(/^,/, '')
+        const chunk = JSON.parse(clean)
+        const text = chunk?.candidates?.[0]?.content?.parts?.[0]?.text
+        if (text) yield text
+      } catch {
+        // Skip malformed chunks
+      }
+    }
+  }
+}
+
+async function* streamOpenAICompat(
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens: number,
+): AsyncGenerator<string> {
+  const { apiKey, baseUrl } = getOpenAICompatConfig()
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream: true,
+    }),
+  })
+
+  if (!response.ok || !response.body) {
+    throw new Error(`LLM API error: ${response.status}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data: ')) continue
+      const data = trimmed.slice(6)
+      if (data === '[DONE]') return
+      try {
+        const chunk = JSON.parse(data)
+        const content = chunk?.choices?.[0]?.delta?.content
+        if (content) yield content
+      } catch {
+        // Skip malformed SSE chunks
+      }
+    }
+  }
+}
+```
+
+- [ ] **Step 5: Create `lib/ai/agents.ts`**
+
+```typescript
+import { randomUUID } from 'crypto'
+import { getFirestoreDb } from '@/lib/db/client'
+import type { AgentConfig, AgentConfigInput } from './types'
+
+const AGENTS_COLLECTION = (userId: string) => `users/${userId}/agents`
+
+export async function createAgent(
+  userId: string,
+  input: AgentConfigInput,
+): Promise<AgentConfig> {
+  const db = getFirestoreDb()
+  const id = randomUUID()
+  const now = Date.now()
+
+  const agent: AgentConfig = {
+    id,
+    userId,
+    ...input,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  await db.collection(AGENTS_COLLECTION(userId)).doc(id).set(agent)
+  return agent
+}
+
+export async function listAgents(userId: string): Promise<AgentConfig[]> {
+  const db = getFirestoreDb()
+  const snapshot = await db
+    .collection(AGENTS_COLLECTION(userId))
+    .orderBy('createdAt', 'asc')
+    .get()
+
+  return snapshot.docs.map(doc => doc.data() as AgentConfig)
+}
+
+export async function getAgent(
+  userId: string,
+  agentId: string,
+): Promise<AgentConfig | null> {
+  const db = getFirestoreDb()
+  const doc = await db
+    .collection(AGENTS_COLLECTION(userId))
+    .doc(agentId)
+    .get()
+
+  if (!doc.exists) return null
+  return doc.data() as AgentConfig
+}
+
+export async function updateAgent(
+  userId: string,
+  agentId: string,
+  patch: Partial<AgentConfigInput>,
+): Promise<AgentConfig> {
+  const db = getFirestoreDb()
+  const ref = db.collection(AGENTS_COLLECTION(userId)).doc(agentId)
+  const existing = await ref.get()
+  if (!existing.exists) throw new Error('Agent not found')
+
+  const updates = { ...patch, updatedAt: Date.now() }
+  await ref.update(updates)
+
+  return { ...(existing.data() as AgentConfig), ...updates }
+}
+
+export async function deleteAgent(userId: string, agentId: string): Promise<void> {
+  const db = getFirestoreDb()
+  await db.collection(AGENTS_COLLECTION(userId)).doc(agentId).delete()
+}
+
+export async function seedDefaultAgents(userId: string): Promise<void> {
+  const existing = await listAgents(userId)
+  if (existing.length > 0) return // Already seeded
+
+  const defaults: AgentConfigInput[] = [
+    {
+      name: 'Personal Assistant',
+      description: 'General tasks, planning, and everyday help',
+      systemPrompt: `You are a personal assistant for a private Life OS. You help with planning, reminders, general questions, and daily tasks. Be concise, practical, and thoughtful. Never share or reference personal data unless the user brings it up. Today's date: ${new Date().toDateString()}.`,
+      model: 'gemini-2.0-flash',
+      temperature: 0.7,
+      maxTokens: 2048,
+      contextWindowSize: 20,
+      tools: ['date_time', 'calculator'],
+      isDefault: true,
+    },
+    {
+      name: 'Research Helper',
+      description: 'Deep research, summarization, and analysis',
+      systemPrompt: 'You are a research assistant. You provide thorough, accurate, well-cited responses. When asked to summarize, extract key insights. When asked to research, be comprehensive. Always indicate if information might be outdated.',
+      model: 'gemini-1.5-pro',
+      temperature: 0.3,
+      maxTokens: 4096,
+      contextWindowSize: 15,
+      tools: [],
+      isDefault: false,
+    },
+    {
+      name: 'Finance Advisor',
+      description: 'Investment analysis, portfolio insights, financial planning',
+      systemPrompt: 'You are a financial analysis assistant. You help analyze investments, explain financial concepts, and assist with portfolio thinking. You do NOT provide regulated financial advice. Always remind the user to consult a licensed financial advisor for decisions. Focus on education and analysis.',
+      model: 'gemini-1.5-pro',
+      temperature: 0.2,
+      maxTokens: 2048,
+      contextWindowSize: 10,
+      tools: ['calculator'],
+      isDefault: false,
+    },
+    {
+      name: 'Journal Companion',
+      description: 'Reflective prompts, mood tracking, and journaling support',
+      systemPrompt: 'You are a compassionate journaling companion. You ask thoughtful, open-ended questions to encourage self-reflection. You help the user explore their thoughts, feelings, and goals. Be warm, non-judgmental, and supportive. Never give unsolicited advice.',
+      model: 'gemini-2.0-flash',
+      temperature: 0.9,
+      maxTokens: 1024,
+      contextWindowSize: 20,
+      tools: [],
+      isDefault: false,
+    },
+    {
+      name: 'Code Assistant',
+      description: 'Code review, debugging, architecture, and technical help',
+      systemPrompt: 'You are a senior software engineer assistant. You help with code review, debugging, architecture decisions, and technical explanations. You favor security, simplicity, and correctness. Always explain your reasoning. Prefer TypeScript/Python. Point out security issues proactively.',
+      model: 'gemini-2.0-flash',
+      temperature: 0.2,
+      maxTokens: 4096,
+      contextWindowSize: 15,
+      tools: [],
+      isDefault: false,
+    },
+  ]
+
+  for (const config of defaults) {
+    await createAgent(userId, config)
+  }
+}
+```
+
+- [ ] **Step 6: Create `lib/ai/chat.ts`**
+
+```typescript
+import { getAgent } from './agents'
+import { streamChatCompletion, buildMessages, trimToContextWindow } from './provider'
+import type { ChatMessage } from './types'
+import { ApiError } from '@/lib/errors/api-error'
+
+export async function* streamChat(
+  userId: string,
+  agentId: string,
+  messages: ChatMessage[],
+): AsyncGenerator<string> {
+  const agent = await getAgent(userId, agentId)
+  if (!agent) throw new ApiError(404, 'Agent not found')
+  if (agent.userId !== userId) throw new ApiError(403, 'Access denied')
+
+  const trimmed = trimToContextWindow(messages, agent.contextWindowSize)
+  const fullMessages = buildMessages(agent.systemPrompt, trimmed)
+
+  yield* streamChatCompletion(
+    agent.model,
+    fullMessages,
+    agent.temperature,
+    agent.maxTokens,
+  )
+}
+```
+
+- [ ] **Step 7: Create `app/api/v1/chat/route.ts`**
+
+```typescript
+import { NextRequest } from 'next/server'
+import { getIronSession } from 'iron-session'
+import { z } from 'zod'
+import { sessionOptions, isSessionValid, type SessionData } from '@/lib/auth/session'
+import { streamChat } from '@/lib/ai/chat'
+import { createErrorResponse } from '@/lib/errors/api-error'
+import { apiRateLimiter } from '@/lib/security/rate-limit'
+
+const ChatRequestSchema = z.object({
+  agentId: z.string().uuid(),
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string().max(10_000),
+    }),
+  ).min(1).max(50),
+})
+
+export async function POST(req: NextRequest): Promise<Response> {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+
+  if (!apiRateLimiter(ip)) return createErrorResponse(429, 'Too many requests')
+
+  const session = await getIronSession<SessionData>(req, new Response(), sessionOptions)
+  if (!isSessionValid(session)) return createErrorResponse(401, 'Authentication required')
+
+  const body = await req.json().catch(() => null)
+  const parsed = ChatRequestSchema.safeParse(body)
+  if (!parsed.success) return createErrorResponse(400, 'Invalid request')
+
+  const { agentId, messages } = parsed.data
+
+  // Return Server-Sent Events stream
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of streamChat(session.sub, agentId, messages)) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`))
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Stream error'
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: msg })}\n\n`))
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+}
+```
+
+- [ ] **Step 8: Create Agent CRUD API routes**
+
+`app/api/v1/agents/route.ts`:
+```typescript
+import { NextRequest } from 'next/server'
+import { z } from 'zod'
+import { withApiGuard } from '@/lib/middleware/api-guard'
+import { createAgent, listAgents } from '@/lib/ai/agents'
+import { createErrorResponse, safeError } from '@/lib/errors/api-error'
+import type { SessionData } from '@/lib/auth/session'
+
+const AgentInputSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500),
+  systemPrompt: z.string().min(1).max(8000),
+  model: z.enum(['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gpt-4o', 'gpt-4o-mini']),
+  temperature: z.number().min(0).max(2),
+  maxTokens: z.number().int().min(256).max(8192),
+  contextWindowSize: z.number().int().min(1).max(50),
+  tools: z.array(z.enum(['web_search', 'calculator', 'date_time', 'vault_search'])),
+  isDefault: z.boolean(),
+})
+
+export const GET = withApiGuard(
+  async (_req, { session }: { session: SessionData }) => {
+    const agents = await listAgents(session.sub)
+    const publicAgents = agents.map(({ userId: _u, ...rest }) => rest)
+    return Response.json({ agents: publicAgents })
+  },
+  { skipCsrf: true },
+)
+
+export const POST = withApiGuard(
+  async (req: NextRequest, { session }: { session: SessionData }) => {
+    const body = await req.json().catch(() => null)
+    const parsed = AgentInputSchema.safeParse(body)
+    if (!parsed.success) return createErrorResponse(400, 'Invalid agent configuration')
+
+    try {
+      const agent = await createAgent(session.sub, parsed.data)
+      const { userId: _u, ...publicAgent } = agent
+      return Response.json({ agent: publicAgent }, { status: 201 })
+    } catch (err) {
+      return createErrorResponse(500, safeError(err).message)
+    }
+  },
+)
+```
+
+`app/api/v1/agents/[id]/route.ts`:
+```typescript
+import { NextRequest } from 'next/server'
+import { z } from 'zod'
+import { withApiGuard } from '@/lib/middleware/api-guard'
+import { getAgent, updateAgent, deleteAgent } from '@/lib/ai/agents'
+import { createErrorResponse, safeError } from '@/lib/errors/api-error'
+import type { SessionData } from '@/lib/auth/session'
+
+const PatchSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).optional(),
+  systemPrompt: z.string().min(1).max(8000).optional(),
+  model: z.enum(['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gpt-4o', 'gpt-4o-mini']).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().min(256).max(8192).optional(),
+  contextWindowSize: z.number().int().min(1).max(50).optional(),
+  tools: z.array(z.enum(['web_search', 'calculator', 'date_time', 'vault_search'])).optional(),
+  isDefault: z.boolean().optional(),
+})
+
+export const GET = withApiGuard(
+  async (req: NextRequest, { session }: { session: SessionData }) => {
+    const id = req.nextUrl.pathname.split('/').pop() ?? ''
+    const agent = await getAgent(session.sub, id)
+    if (!agent) return createErrorResponse(404, 'Agent not found')
+    const { userId: _u, ...publicAgent } = agent
+    return Response.json({ agent: publicAgent })
+  },
+  { skipCsrf: true },
+)
+
+export const PUT = withApiGuard(
+  async (req: NextRequest, { session }: { session: SessionData }) => {
+    const id = req.nextUrl.pathname.split('/').pop() ?? ''
+    const body = await req.json().catch(() => null)
+    const parsed = PatchSchema.safeParse(body)
+    if (!parsed.success) return createErrorResponse(400, 'Invalid update data')
+    try {
+      const updated = await updateAgent(session.sub, id, parsed.data)
+      const { userId: _u, ...publicAgent } = updated
+      return Response.json({ agent: publicAgent })
+    } catch (err) {
+      return createErrorResponse(500, safeError(err).message)
+    }
+  },
+)
+
+export const DELETE = withApiGuard(
+  async (req: NextRequest, { session }: { session: SessionData }) => {
+    const id = req.nextUrl.pathname.split('/').pop() ?? ''
+    try {
+      await deleteAgent(session.sub, id)
+      return Response.json({ success: true })
+    } catch (err) {
+      return createErrorResponse(500, safeError(err).message)
+    }
+  },
+)
+```
+
+- [ ] **Step 9: Create Chat UI components**
+
+`components/chat/MessageBubble.tsx`:
+```tsx
+import { cn } from '@/lib/utils'
+
+interface MessageBubbleProps {
+  role: 'user' | 'assistant'
+  content: string
+  isStreaming?: boolean
+}
+
+export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps) {
+  const isUser = role === 'user'
+  return (
+    <div className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
+      <div
+        className={cn(
+          'max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed',
+          isUser
+            ? 'bg-emerald-600 text-white rounded-br-sm'
+            : 'bg-zinc-800 text-zinc-100 rounded-bl-sm',
+        )}
+      >
+        <p className="whitespace-pre-wrap break-words">{content}</p>
+        {isStreaming && (
+          <span className="inline-block w-1.5 h-4 ml-1 bg-current opacity-70 animate-pulse align-middle" />
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+`components/chat/AgentSelector.tsx`:
+```tsx
+'use client'
+
+import { ChevronDown } from 'lucide-react'
+import type { AgentConfigPublic } from '@/lib/ai/types'
+
+interface AgentSelectorProps {
+  agents: AgentConfigPublic[]
+  selectedId: string
+  onSelect: (id: string) => void
+}
+
+export function AgentSelector({ agents, selectedId, onSelect }: AgentSelectorProps) {
+  const selected = agents.find(a => a.id === selectedId)
+
+  return (
+    <div className="relative">
+      <select
+        value={selectedId}
+        onChange={e => onSelect(e.target.value)}
+        className="w-full appearance-none rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 pr-8 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+        aria-label="Select agent"
+      >
+        {agents.map(agent => (
+          <option key={agent.id} value={agent.id}>
+            {agent.name}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-4 w-4 text-zinc-400" />
+      {selected && (
+        <p className="mt-1 text-xs text-zinc-500">{selected.description}</p>
+      )}
+    </div>
+  )
+}
+```
+
+`components/chat/ChatWindow.tsx`:
+```tsx
+'use client'
+
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Send } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { MessageBubble } from './MessageBubble'
+import { AgentSelector } from './AgentSelector'
+import type { ChatMessage, AgentConfigPublic } from '@/lib/ai/types'
+
+interface ChatWindowProps {
+  agents: AgentConfigPublic[]
+  defaultAgentId: string
+}
+
+export function ChatWindow({ agents, defaultAgentId }: ChatWindowProps) {
+  const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentId)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendMessage = useCallback(async () => {
+    const text = input.trim()
+    if (!text || isStreaming) return
+
+    const userMessage: ChatMessage = { role: 'user', content: text }
+    const updatedMessages = [...messages, userMessage]
+    setMessages(updatedMessages)
+    setInput('')
+    setIsStreaming(true)
+
+    // Add empty assistant message for streaming
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+
+    try {
+      const res = await fetch('/api/v1/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: selectedAgentId, messages: updatedMessages }),
+      })
+
+      if (!res.ok || !res.body) {
+        setMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' },
+        ])
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let assembled = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6)
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data) as { text?: string; error?: string }
+            if (parsed.text) {
+              assembled += parsed.text
+              setMessages(prev => [
+                ...prev.slice(0, -1),
+                { role: 'assistant', content: assembled },
+              ])
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch {
+      setMessages(prev => [
+        ...prev.slice(0, -1),
+        { role: 'assistant', content: 'Connection error. Please try again.' },
+      ])
+    } finally {
+      setIsStreaming(false)
+      inputRef.current?.focus()
+    }
+  }, [input, isStreaming, messages, selectedAgentId])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void sendMessage()
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Agent selector */}
+      <div className="border-b border-zinc-800 p-4">
+        <AgentSelector
+          agents={agents}
+          selectedId={selectedAgentId}
+          onSelect={id => { setSelectedAgentId(id); setMessages([]) }}
+        />
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-zinc-600">
+              Start a conversation. Your messages are private.
+            </p>
+          </div>
+        )}
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={i}
+            role={msg.role as 'user' | 'assistant'}
+            content={msg.content}
+            isStreaming={isStreaming && i === messages.length - 1 && msg.role === 'assistant'}
+          />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="border-t border-zinc-800 p-4">
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Message your agent… (Enter to send, Shift+Enter for new line)"
+            rows={1}
+            disabled={isStreaming}
+            className="flex-1 resize-none rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none disabled:opacity-50"
+            style={{ maxHeight: '120px' }}
+            aria-label="Chat message"
+          />
+          <Button
+            onClick={() => void sendMessage()}
+            disabled={!input.trim() || isStreaming}
+            size="sm"
+            className="h-11 w-11 shrink-0 rounded-xl bg-emerald-600 p-0 hover:bg-emerald-500 disabled:opacity-40"
+            aria-label="Send message"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-zinc-600">
+          Messages are not stored. Switch agents to reset context.
+        </p>
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 10: Create Agent Management UI**
+
+`components/agents/AgentCard.tsx`:
+```tsx
+'use client'
+
+import { useState } from 'react'
+import { Pencil, Trash2, Cpu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import type { AgentConfigPublic } from '@/lib/ai/types'
+
+interface AgentCardProps {
+  agent: AgentConfigPublic
+  onEdit: (agent: AgentConfigPublic) => void
+  onDelete: (id: string) => void
+}
+
+export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete agent "${agent.name}"? This cannot be undone.`)) return
+    setIsDeleting(true)
+    try {
+      await fetch(`/api/v1/agents/${agent.id}`, { method: 'DELETE' })
+      onDelete(agent.id)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-emerald-400 shrink-0" />
+          <h3 className="text-sm font-medium">{agent.name}</h3>
+          {agent.isDefault && (
+            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-400">
+              Default
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(agent)}
+            aria-label={`Edit ${agent.name}`}
+            className="h-7 w-7 p-0 text-zinc-500 hover:text-zinc-100"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleDelete()}
+            disabled={isDeleting}
+            aria-label={`Delete ${agent.name}`}
+            className="h-7 w-7 p-0 text-zinc-500 hover:text-red-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      <p className="text-xs text-zinc-500">{agent.description}</p>
+      <div className="flex flex-wrap gap-2 text-xs text-zinc-600">
+        <span className="rounded bg-zinc-800 px-2 py-0.5">{agent.model}</span>
+        <span className="rounded bg-zinc-800 px-2 py-0.5">temp {agent.temperature}</span>
+        <span className="rounded bg-zinc-800 px-2 py-0.5">{agent.maxTokens} tokens</span>
+        <span className="rounded bg-zinc-800 px-2 py-0.5">ctx {agent.contextWindowSize}</span>
+      </div>
+      {agent.tools.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {agent.tools.map(tool => (
+            <span key={tool} className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400">
+              {tool}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 11: Create page routes**
+
+`app/(vault)/chat/page.tsx`:
+```tsx
+import { cookies } from 'next/headers'
+import { getIronSession } from 'iron-session'
+import { sessionOptions, type SessionData } from '@/lib/auth/session'
+import { listAgents, seedDefaultAgents } from '@/lib/ai/agents'
+import { ChatWindow } from '@/components/chat/ChatWindow'
+import type { AgentConfigPublic } from '@/lib/ai/types'
+
+export default async function ChatPage() {
+  const cookieStore = cookies()
+  const session = await getIronSession<SessionData>(cookieStore, sessionOptions)
+
+  // Seed default agents on first visit
+  await seedDefaultAgents(session.sub)
+
+  const agents = await listAgents(session.sub)
+  const publicAgents: AgentConfigPublic[] = agents.map(({ userId: _u, ...rest }) => rest)
+  const defaultAgent = publicAgents.find(a => a.isDefault) ?? publicAgents[0]
+
+  if (!defaultAgent || publicAgents.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-zinc-500">No agents configured.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-[calc(100vh-8rem)] flex-col">
+      <div className="mb-4">
+        <h1 className="text-2xl font-semibold">Chat</h1>
+        <p className="text-sm text-zinc-400 mt-1">
+          Your private AI assistant. Messages are not stored.
+        </p>
+      </div>
+      <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+        <ChatWindow agents={publicAgents} defaultAgentId={defaultAgent.id} />
+      </div>
+    </div>
+  )
+}
+```
+
+`app/(vault)/agents/page.tsx`:
+```tsx
+import { cookies } from 'next/headers'
+import { getIronSession } from 'iron-session'
+import { sessionOptions, type SessionData } from '@/lib/auth/session'
+import { listAgents } from '@/lib/ai/agents'
+import { AgentCard } from '@/components/agents/AgentCard'
+import { Plus } from 'lucide-react'
+import Link from 'next/link'
+import type { AgentConfigPublic } from '@/lib/ai/types'
+
+export default async function AgentsPage() {
+  const cookieStore = cookies()
+  const session = await getIronSession<SessionData>(cookieStore, sessionOptions)
+  const agents = await listAgents(session.sub)
+  const publicAgents: AgentConfigPublic[] = agents.map(({ userId: _u, ...rest }) => rest)
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Agents</h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            Configure your personal AI agents. Each agent has its own persona, model, and behavior.
+          </p>
+        </div>
+        <Link
+          href="/agents/new"
+          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+        >
+          <Plus className="h-4 w-4" />
+          New Agent
+        </Link>
+      </div>
+
+      {publicAgents.length === 0 ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-12 text-center">
+          <p className="text-zinc-500">No agents yet. Create your first agent.</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {publicAgents.map(agent => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onEdit={() => {}}
+              onDelete={() => {}}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+- [ ] **Step 12: Add Chat & Agents to Sidebar**
+
+Update `components/layout/Sidebar.tsx` — add `MessageSquare` and `Bot` icons:
+
+```tsx
+import {
+  LayoutDashboard, BookOpen, FileText, FolderOpen,
+  Lock, TrendingUp, DollarSign, Search, Settings,
+  MessageSquare, Bot,
+} from 'lucide-react'
+
+const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/chat', label: 'Chat', icon: MessageSquare },
+  { href: '/agents', label: 'Agents', icon: Bot },
+  { href: '/journal', label: 'Journal', icon: BookOpen },
+  { href: '/notes', label: 'Notes', icon: FileText },
+  { href: '/projects', label: 'Projects', icon: FolderOpen },
+  { href: '/documents', label: 'Documents', icon: FileText },
+  { href: '/vault/passwords', label: 'Password Vault', icon: Lock },
+  { href: '/vault/finance', label: 'Investments', icon: TrendingUp },
+  { href: '/net-worth', label: 'Net Worth', icon: DollarSign },
+  { href: '/search', label: 'Search', icon: Search },
+  { href: '/settings', label: 'Settings', icon: Settings },
+] as const
+```
+
+- [ ] **Step 13: Add google-auth-library dependency**
+
+```bash
+npm install google-auth-library
+```
+
+- [ ] **Step 14: Update Terraform secrets to include AI config**
+
+Add to `terraform/secrets.tf`:
+```hcl
+resource "google_secret_manager_secret" "openai_compat_key" {
+  secret_id = "life-os-openai-compat-key-${var.environment}"
+  replication { auto {} }
+}
+```
+
+Add to `terraform/cloudrun.tf` container env section:
+```hcl
+env {
+  name  = "OPENAI_COMPATIBLE_BASE_URL"
+  value = "http://127.0.0.1:8787"  # Headroom proxy (optional fallback)
+}
+```
+
+- [ ] **Step 15: Run tests — expect PASS**
+
+```bash
+npx vitest run tests/unit/ai/
+```
+
+Expected: PASS (5+ tests).
+
+- [ ] **Step 16: Build check**
+
+```bash
+npm run build
+```
+
+Expected: BUILD SUCCESS.
+
+- [ ] **Step 17: Commit**
+
+```bash
+git add lib/ai/ app/api/v1/chat/ app/api/v1/agents/ \
+  app/\(vault\)/chat/ app/\(vault\)/agents/ \
+  components/chat/ components/agents/
+git commit -m "feat(ai): add AI chatbot with streaming SSE and configurable agent system (Gemini + OpenAI-compat)"
 ```
