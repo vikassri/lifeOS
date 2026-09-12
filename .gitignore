@@ -16,6 +16,9 @@
 # production
 /build
 
+# superpowers scratch files
+.superpowers/
+
 # misc
 .DS_Store
 *.pem

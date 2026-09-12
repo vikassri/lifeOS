@@ -1,3 +1,4 @@
+// NOTE: Next.js 14 does not load .ts configs — next.config.mjs is the active file. Keep both in sync.
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
