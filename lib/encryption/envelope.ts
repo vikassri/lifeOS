@@ -1,3 +1,4 @@
+import 'server-only'
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
 import { kmsEncryptDek, kmsDecryptDek } from './kms'
 import type { EncryptedPayload } from './types'

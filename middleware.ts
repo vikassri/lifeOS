@@ -38,6 +38,12 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(loginUrl)
   }
 
+  // Refresh session expiry on each authenticated request (sliding window)
+  if (session.exp - Date.now() < 6 * 60 * 60 * 1000) { // less than 6h remaining
+    session.exp = Date.now() + 8 * 60 * 60 * 1000
+    await session.save()
+  }
+
   return NextResponse.next()
 }
 

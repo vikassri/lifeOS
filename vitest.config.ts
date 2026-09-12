@@ -15,6 +15,10 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, '.') },
+    alias: {
+      '@': path.resolve(__dirname, '.'),
+      // Stub server-only so Vitest (non-Next.js environment) doesn't throw
+      'server-only': path.resolve(__dirname, 'tests/__mocks__/server-only.ts'),
+    },
   },
 })

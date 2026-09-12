@@ -40,7 +40,7 @@ resource "google_cloud_run_v2_service" "vault" {
 
       env {
         name  = "KMS_KEY_NAME"
-        value = "${google_kms_crypto_key.data_key.id}/cryptoKeyVersions/1"
+        value = google_kms_crypto_key.data_key.id
       }
 
       dynamic "env" {

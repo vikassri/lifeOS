@@ -1,3 +1,4 @@
+import 'server-only'
 import { getIronSession, type IronSession } from 'iron-session'
 import type { NextRequest } from 'next/server'
 

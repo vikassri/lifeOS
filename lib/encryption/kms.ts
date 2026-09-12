@@ -1,3 +1,4 @@
+import 'server-only'
 import { KeyManagementServiceClient } from '@google-cloud/kms'
 
 const KMS_KEY_NAME = process.env['KMS_KEY_NAME'] ?? ''

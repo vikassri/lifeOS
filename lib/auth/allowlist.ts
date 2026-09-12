@@ -1,3 +1,4 @@
+import 'server-only'
 // SERVER-ONLY — never import this in client components
 // This file must never appear in browser bundles
 

@@ -6,6 +6,10 @@ resource "google_service_account" "vault_sa" {
 }
 
 locals {
+  # TODO(pre-prod): Replace project-level storage/datastore roles with resource-scoped bindings:
+  # - google_storage_bucket_iam_member per bucket (not project-level)
+  # - google_firestore_database_iam_member for specific database
+  # Current project-level roles are acceptable for development but should be tightened before go-live.
   vault_sa_roles = [
     "roles/datastore.user",
     "roles/storage.objectAdmin",
