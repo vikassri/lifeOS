@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Life OS — Personal Digital Vault
 
-## Getting Started
+Private single-user Personal Life OS hosted on Google Cloud.
 
-First, run the development server:
+**Access:** Restricted to `er.vikassri@gmail.com` only.
+
+## Stack
+
+- Next.js 14 + TypeScript + Tailwind CSS
+- Cloud Run (asia-southeast1)
+- Cloud Firestore (server-side only)
+- Cloud KMS (AES-256-GCM envelope encryption)
+- Google Secret Manager
+- iron-session (encrypted HTTP-only cookies)
+- Terraform
+
+## Local Development
+
+### Prerequisites
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install gcloud CLI: https://cloud.google.com/sdk/docs/install
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment variables (never commit these)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+# Fill in values from Secret Manager or GCP Console
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Run
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000). Unauthenticated requests redirect to `/login`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Test
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx vitest run tests/unit/     # unit tests
+npm test                       # all Vitest tests (unit + integration)
+npx playwright test            # e2e (requires dev server + browser install)
+```
 
-## Deploy on Vercel
+### Build
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+```
+app/           Next.js App Router (auth, vault pages, API routes)
+lib/           Auth, encryption, security, audit, database clients
+terraform/     GCP infrastructure as code
+tests/         Unit, integration, and E2E test suites
+docs/          Architecture, security, and threat model documentation
+```
+
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Security
+
+See [SECURITY.md](SECURITY.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
+## Design Spec
+
+Full foundation design: [docs/superpowers/specs/2026-09-12-personal-life-os-foundation-design.md](docs/superpowers/specs/2026-09-12-personal-life-os-foundation-design.md).
