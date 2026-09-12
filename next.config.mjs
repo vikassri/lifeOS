@@ -1,6 +1,7 @@
 // AUTHORITATIVE on Next.js 14 — next.config.ts is kept for Next 15+ upgrade compatibility
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {
