@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server'
+
+export const dynamic = 'force-dynamic'
 import { getIronSession } from 'iron-session'
 import { getSessionOptions, isSessionValid, type SessionData } from '@/lib/auth/session'
 import { writeAuditEvent } from '@/lib/audit/log'

@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server'
+
+export const dynamic = 'force-dynamic'
 import { getIronSession } from 'iron-session'
 import { generateCsrfToken } from '@/lib/security/csrf'
 import { getSessionOptions, type SessionData } from '@/lib/auth/session'
