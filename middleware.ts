@@ -19,6 +19,20 @@ function isPublicPath(pathname: string): boolean {
   return false
 }
 
+function safeNextPath(pathname: string): string {
+  // Reject protocol-relative (//), absolute URLs with schemes, and anything suspicious
+  if (
+    !pathname.startsWith('/') ||
+    pathname.startsWith('//') ||
+    pathname.includes(':') ||
+    pathname.includes('\n') ||
+    pathname.includes('\r')
+  ) {
+    return '/dashboard'
+  }
+  return pathname
+}
+
 export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl
 
@@ -34,7 +48,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   if (!isSessionValid(session)) {
     const loginUrl = new URL('/login', req.url)
     // Only allow same-origin redirects — prevent open redirect
-    loginUrl.searchParams.set('next', pathname.startsWith('/') ? pathname : '/')
+    loginUrl.searchParams.set('next', safeNextPath(pathname))
     return NextResponse.redirect(loginUrl)
   }
 

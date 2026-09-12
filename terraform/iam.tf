@@ -14,7 +14,6 @@ locals {
     "roles/datastore.user",
     "roles/storage.objectAdmin",
     "roles/secretmanager.secretAccessor",
-    "roles/cloudkms.cryptoKeyEncrypterDecrypter",
     "roles/logging.logWriter",
   ]
 }

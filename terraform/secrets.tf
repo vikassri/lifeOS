@@ -17,5 +17,15 @@ resource "google_secret_manager_secret" "app_secrets" {
   depends_on = [google_project_service.apis]
 }
 
+resource "google_secret_manager_secret" "openai_compat_key" {
+  secret_id = "life-os-openai-compat-key-${var.environment}"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
 # Secrets are populated manually — Terraform only creates the containers
 # To add values: gcloud secrets versions add life-os-session-secret-prod --data-file=-

@@ -43,17 +43,40 @@ resource "google_cloud_run_v2_service" "vault" {
         value = google_kms_crypto_key.data_key.id
       }
 
-      dynamic "env" {
-        for_each = google_secret_manager_secret.app_secrets
-        content {
-          name = upper(replace(split("life-os-", env.key)[1], "-${var.environment}", ""))
-          value_source {
-            secret_key_ref {
-              secret  = env.value.secret_id
-              version = "latest"
-            }
+      env {
+        name = "GOOGLE_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.app_secrets["oauth_client_id"].secret_id
+            version = "latest"
           }
         }
+      }
+
+      env {
+        name = "GOOGLE_CLIENT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.app_secrets["oauth_client_secret"].secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "SESSION_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.app_secrets["session_secret"].secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name  = "GOOGLE_REDIRECT_URI"
+        value = "https://YOUR_CLOUD_RUN_URL/api/auth/callback"
+        # Update this value after first Terraform apply using the Cloud Run URL from outputs
       }
 
       liveness_probe {
