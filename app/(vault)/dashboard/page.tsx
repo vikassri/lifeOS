@@ -4,7 +4,7 @@ import { getSessionOptions, type SessionData } from '@/lib/auth/session'
 import { ShieldCheck, BookOpen, FileText, TrendingUp } from 'lucide-react'
 
 export default async function DashboardPage() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const session = await getIronSession<SessionData>(cookieStore, getSessionOptions())
 
   return (

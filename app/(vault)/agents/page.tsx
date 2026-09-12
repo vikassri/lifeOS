@@ -9,7 +9,7 @@ import Link from 'next/link'
 import type { AgentConfigPublic } from '@/lib/ai/types'
 
 export default async function AgentsPage() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const session = await getIronSession<SessionData>(cookieStore, getSessionOptions())
   if (!isSessionValid(session)) redirect('/login')
   const agents = await listAgents(session.sub)

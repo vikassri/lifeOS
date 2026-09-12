@@ -11,7 +11,7 @@ export default async function VaultLayout({
   children: React.ReactNode
 }) {
   // Read session server-side
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const session = await getIronSession<SessionData>(cookieStore, getSessionOptions())
 
   if (!isSessionValid(session)) {

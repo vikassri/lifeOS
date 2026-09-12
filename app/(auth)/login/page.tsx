@@ -1,15 +1,16 @@
 import { LoginButton } from '@/components/auth/LoginButton'
 import { ShieldCheck } from 'lucide-react'
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { error?: string }
+  searchParams: Promise<{ error?: string }>
 }) {
+  const params = await searchParams
   const errorMessage =
-    searchParams.error === 'unauthorized'
+    params.error === 'unauthorized'
       ? 'Access denied. This vault is private.'
-      : searchParams.error === 'access_denied'
+      : params.error === 'access_denied'
         ? 'Sign-in was cancelled.'
         : null
 

@@ -7,7 +7,7 @@ import { ChatWindow } from '@/components/chat/ChatWindow'
 import type { AgentConfigPublic } from '@/lib/ai/types'
 
 export default async function ChatPage() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const session = await getIronSession<SessionData>(cookieStore, getSessionOptions())
   if (!isSessionValid(session)) redirect('/login')
 
