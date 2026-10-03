@@ -1,5 +1,12 @@
 import type { Config } from 'tailwindcss'
 
+// All zinc shades use CSS variables so light/dark switching works for every
+// opacity variant (bg-zinc-800/30, border-zinc-700/40, etc.) automatically.
+const zincShades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const
+const zincVars = Object.fromEntries(
+  zincShades.map(s => [s, `rgb(var(--zinc-${s}) / <alpha-value>)`])
+)
+
 const config: Config = {
   darkMode: ['class'],
   content: [
@@ -10,6 +17,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        zinc: zincVars,
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',

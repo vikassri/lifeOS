@@ -16,6 +16,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npx tsc --noEmit
+        env:
+          SESSION_SECRET: ci-dummy-session-secret-not-used-in-production-at-all
+          ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -25,6 +28,9 @@ jobs:
         with: { node-version: '22', cache: 'npm' }
       - run: npm ci
       - run: npx vitest run --coverage
+        env:
+          SESSION_SECRET: ci-dummy-session-secret-not-used-in-production-at-all
+          ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
       - uses: actions/upload-artifact@v4
         with:
           name: coverage
@@ -63,9 +69,8 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          SESSION_SECRET: ${{ secrets.CI_SESSION_SECRET || 'ci-dummy-session-secret-not-used-in-production-at-all' }}
+          SESSION_SECRET: ci-dummy-session-secret-not-used-in-production-at-all
+          ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
           GOOGLE_CLIENT_ID: dummy
           GOOGLE_CLIENT_SECRET: dummy
           GOOGLE_REDIRECT_URI: http://localhost:3000/api/auth/callback
-          GCP_PROJECT_ID: dummy
-          KMS_KEY_NAME: dummy

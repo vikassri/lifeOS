@@ -4,7 +4,7 @@ import type { SessionData } from '@/lib/auth/session'
 
 const baseSession: SessionData = {
   sub: 'user-123',
-  email: 'er.vikassri@gmail.com',
+  email: 'onlyricks@lifeos.local',
   iat: Date.now(),
   exp: Date.now() + 8 * 60 * 60 * 1000,
   stepUpExpiry: null,

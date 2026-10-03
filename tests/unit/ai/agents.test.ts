@@ -1,41 +1,46 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/db/client', () => ({
-  getFirestoreDb: vi.fn(() => ({
-    collection: vi.fn(() => ({
-      doc: vi.fn(() => ({
-        set: vi.fn(async () => {}),
-        get: vi.fn(async () => ({ exists: true, data: () => mockAgent, id: 'agent-1' })),
-        update: vi.fn(async () => {}),
-        delete: vi.fn(async () => {}),
-      })),
-      where: vi.fn(() => ({
-        orderBy: vi.fn(() => ({
-          get: vi.fn(async () => ({ docs: [{ id: 'agent-1', data: () => mockAgent }] })),
-        })),
-      })),
-      orderBy: vi.fn(() => ({
-        get: vi.fn(async () => ({ docs: [{ id: 'agent-1', data: () => mockAgent }] })),
-      })),
-    })),
-  })),
-}))
+// Mock the SQLite client before importing agents
+vi.mock('@/lib/db/client', () => {
+  const agents = new Map<string, any>()
 
-const mockAgent = {
-  id: 'agent-1',
-  userId: 'user-123',
-  name: 'Test Agent',
-  description: 'A test agent',
-  systemPrompt: 'You are a helpful assistant.',
-  model: 'gemini-2.0-flash',
-  temperature: 0.7,
-  maxTokens: 2048,
-  contextWindowSize: 10,
-  tools: [],
-  isDefault: false,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-}
+  const mockDb = {
+    prepare: vi.fn((sql: string) => {
+      return {
+        all: vi.fn((...params: any[]) => {
+          const userId = params[0]
+          return Array.from(agents.values()).filter(a => a.user_id === userId)
+        }),
+        get: vi.fn((...params: any[]) => {
+          const [id, userId] = params
+          return agents.get(id) ?? null
+        }),
+        run: vi.fn((...params: any[]) => {
+          if (sql.includes('INSERT INTO agents')) {
+            const [id, user_id, name, description, system_prompt, model, temperature, max_tokens, context_window_size, tools, is_default, created_at, updated_at] = params
+            agents.set(id, { id, user_id, name, description, system_prompt, model, temperature, max_tokens, context_window_size, tools, is_default, created_at, updated_at })
+          } else if (sql.includes('DELETE FROM agents')) {
+            const [id] = params
+            agents.delete(id)
+          } else if (sql.includes('UPDATE agents')) {
+            // last two params are agentId, userId
+            const agentId = params[params.length - 2]
+            const existing = agents.get(agentId)
+            if (existing) {
+              const [name, description, system_prompt, model, temperature, max_tokens, context_window_size, tools, is_default, updated_at] = params
+              agents.set(agentId, { ...existing, name, description, system_prompt, model, temperature, max_tokens, context_window_size, tools, is_default, updated_at })
+            }
+          }
+          return { changes: 1 }
+        }),
+      }
+    }),
+  }
+
+  return {
+    getDb: vi.fn(() => mockDb),
+  }
+})
 
 import { createAgent, listAgents, deleteAgent } from '@/lib/ai/agents'
 
@@ -45,7 +50,7 @@ describe('Agent CRUD', () => {
       name: 'Test Agent',
       description: 'A test agent',
       systemPrompt: 'You are a helpful assistant.',
-      model: 'gemini-2.0-flash',
+      model: 'gpt-4o-mini',
       temperature: 0.7,
       maxTokens: 2048,
       contextWindowSize: 10,

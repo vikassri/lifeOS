@@ -9,7 +9,7 @@ Life OS follows a **zero-trust** security model. Every request is authenticated,
 The browser **never** receives:
 
 - Firestore SDK or credentials
-- Google OAuth tokens (access_token, id_token, refresh_token)
+- Password hashes
 - Encryption keys or DEKs
 - Raw database query results
 
@@ -19,11 +19,12 @@ Only shaped API responses and an encrypted HTTP-only session cookie are sent to 
 
 | Control | Implementation |
 |---------|---------------|
-| Identity provider | Google OAuth 2.0 with PKCE |
+| Login | Username `onlyricks` plus password verified against a bcrypt hash |
 | Session storage | iron-session (AES-256-CBC encrypted cookie) |
 | Cookie flags | HttpOnly, Secure (production), SameSite=Lax |
 | Session lifetime | 8 hours with sliding window refresh |
-| Authorization | Server-side email allowlist (never in client bundle) |
+| Authorization | Server-side single-account allowlist checked on pages and API requests |
+| Brute-force protection | Per-IP rate limiting for login attempts |
 | Step-up auth | 15-minute elevated window for sensitive operations |
 
 ### Encryption
@@ -43,7 +44,7 @@ Every `/api/v1/*` request passes through:
 1. **Rate limiting** — per-IP request throttling
 2. **CSRF validation** — double-submit cookie pattern
 3. **Session validation** — verify cookie integrity and expiry
-4. **Allowlist check** — reject unauthorized emails
+4. **Allowlist check** — reject sessions outside the authorized local account
 5. **Step-up check** — enforce elevated auth on sensitive routes
 6. **Input validation** — Zod schema rejection of malformed input
 
@@ -78,7 +79,7 @@ Audit events include hashed IP addresses (SHA-256), user agent, timestamp, and n
 
 | Secret | Storage |
 |--------|---------|
-| OAuth client ID / secret | Google Secret Manager |
+| Google Drive OAuth client ID / secret (if enabled) | Google Secret Manager |
 | Session encryption key | Google Secret Manager |
 | KMS key | Cloud KMS (IAM-restricted) |
 
@@ -94,4 +95,4 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full STRIDE analysis.
 
 ## Reporting
 
-This is a private single-user system. If you discover a security issue, contact `er.vikassri@gmail.com` directly.
+This is a private single-user system. If you discover a security issue, contact the repository owner privately.

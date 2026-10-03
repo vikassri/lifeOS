@@ -11,15 +11,17 @@ test.describe('Authentication protection', () => {
     await expect(page).toHaveURL(/\/login/)
   })
 
-  test('login page shows Google sign-in button', async ({ page }) => {
+  test('login page requires username and password', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.getByRole('button', { name: /sign in with google/i })).toBeVisible()
+    await expect(page.getByLabel('Username')).toBeVisible()
+    await expect(page.getByLabel('Password')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
   })
 
   test('login page shows vault branding', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.getByText('Life OS')).toBeVisible()
-    await expect(page.getByText('Your private digital vault')).toBeVisible()
+    await expect(page.getByText('lifeOS')).toBeVisible()
+    await expect(page.getByText('Your private life, thoughtfully organized.')).toBeVisible()
   })
 
   test('health endpoint returns 200', async ({ request }) => {

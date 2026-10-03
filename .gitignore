@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# SQLite local database (contains personal data — never commit)
+.data/
+*.db
+*.db-shm
+*.db-wal

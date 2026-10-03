@@ -3,16 +3,12 @@ import { getIronSession, type IronSession } from 'iron-session'
 import type { NextRequest } from 'next/server'
 
 export interface SessionData {
-  sub: string           // Google subject ID
+  sub: string           // user ID
   email: string
   iat: number           // issued at (ms)
   exp: number           // expires at (ms)
   stepUpExpiry: number | null  // step-up auth window
   csrfToken?: string    // CSRF token bound to session
-  // OAuth PKCE state (temporary — cleared after callback)
-  oauthState?: string
-  oauthCodeVerifier?: string
-  oauthStateExpiry?: number
 }
 
 function getSessionSecret(): string {

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { buildMessages, trimToContextWindow } from '@/lib/ai/provider'
+import { describe, it, expect, vi } from 'vitest'
+import { buildMessages, resolveBaseUrl, streamChatCompletion, trimToContextWindow } from '@/lib/ai/provider'
 import type { ChatMessage } from '@/lib/ai/types'
 
 describe('buildMessages', () => {
@@ -43,5 +43,44 @@ describe('trimToContextWindow', () => {
       content: `Message ${i}`,
     }))
     expect(trimToContextWindow(msgs, 5)).toHaveLength(5)
+  })
+})
+
+describe('custom OpenAI-compatible provider', () => {
+  it('normalizes the configured base URL', () => {
+    expect(resolveBaseUrl({
+      provider: 'custom',
+      apiKey: '',
+      baseUrl: 'https://llm.example/v1///',
+      model: 'custom-model',
+    })).toBe('https://llm.example/v1')
+  })
+
+  it('allows an endpoint without an API key and omits bearer authorization', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('data: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } }),
+    )
+
+    try {
+      const chunks = []
+      for await (const chunk of streamChatCompletion({
+        provider: 'custom',
+        apiKey: '',
+        baseUrl: 'https://llm.example/v1/',
+        model: 'custom-model',
+      }, [{ role: 'user', content: 'Hello' }], 0.7, 256)) {
+        chunks.push(chunk)
+      }
+
+      expect(chunks).toEqual([])
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://llm.example/v1/chat/completions',
+        expect.objectContaining({
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 })

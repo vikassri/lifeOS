@@ -1,11 +1,7 @@
 import 'server-only'
-// SERVER-ONLY — never import this in client components
-// This file must never appear in browser bundles
 
-const AUTHORIZED_EMAILS: ReadonlySet<string> = new Set([
-  'er.vikassri@gmail.com',
-])
+const AUTHORIZED_EMAIL = 'onlyricks@lifeos.local'
 
 export function isAuthorizedEmail(email: string): boolean {
-  return AUTHORIZED_EMAILS.has(email)
+  return email === AUTHORIZED_EMAIL
 }

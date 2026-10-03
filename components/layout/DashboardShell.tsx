@@ -3,16 +3,16 @@ import { Header } from './Header'
 
 interface DashboardShellProps {
   children: React.ReactNode
-  userEmail: string
+  userName: string
 }
 
-export function DashboardShell({ children, userEmail }: DashboardShellProps) {
+export function DashboardShell({ children, userName }: DashboardShellProps) {
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950">
+    <div className="flex h-dvh overflow-hidden bg-zinc-950">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header userEmail={userEmail} />
-        <main className="flex-1 overflow-auto p-6" role="main">
+        <Header userName={userName} />
+        <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6" id="main-content">
           {children}
         </main>
       </div>

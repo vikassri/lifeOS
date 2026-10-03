@@ -4,16 +4,16 @@ This document summarizes the Personal Life OS foundation architecture. For the f
 
 ## High-Level Design
 
-Life OS is a **Next.js 14 full-stack application** deployed on **Cloud Run** in `asia-southeast1`. The browser never receives database credentials, OAuth tokens, or encryption keys — only shaped API responses and an encrypted HTTP-only session cookie.
+Life OS is a **Next.js 14 full-stack application** with local SQLite storage. The browser never receives database credentials, password hashes, or encryption keys — only shaped API responses and an encrypted HTTP-only session cookie.
 
 ```
 Browser (Client Components, no secrets)
         │ HTTPS (TLS 1.3)
         ▼
 Cloud Run — Next.js App Router
-  ├── /app/(auth)/       Login page, OAuth callback
+  ├── /app/(auth)/       Username/password login page
   ├── /app/(vault)/      Protected pages (Server Components)
-  ├── /app/api/auth/     Google OAuth PKCE handler
+  ├── /app/api/auth/     Local username/password handler
   ├── /app/api/v1/       REST API route handlers
   ├── lib/auth/          Session middleware + allowlist
   ├── lib/encryption/    KMS envelope encryption
@@ -28,9 +28,9 @@ Cloud Run — Next.js App Router
 
 ## Authentication
 
-- **Google OAuth 2.0 with PKCE** — server-side only; tokens are discarded after fetching user info
+- **Local username and password** — only `onlyricks` is accepted; the password is verified against a bcrypt hash
 - **iron-session** — AES-256-CBC encrypted cookie, 8-hour max age, sliding window refresh
-- **Server-side allowlist** — only `er.vikassri@gmail.com` is authorized
+- **Server-side allowlist** — only the `onlyricks` local account is authorized
 - **Step-up authentication** — 15-minute elevated window required for sensitive routes (password vault, finance, export)
 
 ## API Middleware Chain
@@ -59,7 +59,7 @@ Documents in GCS use CMEK (KMS-managed customer encryption keys).
 
 ## Data Model
 
-All documents live under `users/{userId}/` where `userId` is the Google `sub` (subject ID). The foundation layer includes:
+Application records are associated with the local user ID (`local-user-1`). Authentication does not depend on a Google account or email address. The foundation layer includes:
 
 - `profile/settings` — app preferences
 - `audit_log/{eventId}` — immutable security events
@@ -75,7 +75,7 @@ Managed via Terraform in `terraform/`:
 | Cloud Run | Application hosting |
 | Firestore | Document database |
 | Cloud KMS | Key encryption key for envelope encryption |
-| Secret Manager | OAuth credentials, session secret |
+| Secret Manager | Session secret and optional integration credentials |
 | Cloud Storage | Documents and backups |
 | Cloud Monitoring | Auth failure alerts |
 

@@ -1,42 +1,25 @@
-# Life OS — Personal Digital Vault
+# lifeOS — Personal Life OS
 
-Private single-user Personal Life OS hosted on Google Cloud.
+Private, single-user lifeOS application with local SQLite storage.
 
-**Access:** Restricted to `er.vikassri@gmail.com` only.
+**Access:** Login is restricted to the `onlyricks` username and the password configured during local setup.
 
 ## Stack
 
 - Next.js 14 + TypeScript + Tailwind CSS
-- Cloud Run (asia-southeast1)
-- Cloud Firestore (server-side only)
-- Cloud KMS (AES-256-GCM envelope encryption)
-- Google Secret Manager
+- SQLite (local `.data/` directory)
+- Local AES-256-GCM encryption
 - iron-session (encrypted HTTP-only cookies)
-- Terraform
 
 ## Local Development
 
 ### Prerequisites
 
 ```bash
-# Install gcloud CLI: https://cloud.google.com/sdk/docs/install
-gcloud auth application-default login
-gcloud config set project YOUR_PROJECT_ID
+bash scripts/setup-local.sh
 ```
 
-### Environment variables (never commit these)
-
-```bash
-cp .env.example .env.local
-# Fill in values from Secret Manager or GCP Console
-```
-
-### Run
-
-```bash
-npm install
-npm run dev
-```
+The setup script creates `.env.local` when needed, generates local secrets, installs dependencies, and prompts for the `onlyricks` password. Its bcrypt hash is stored in `.data/password.hash`, which is gitignored. Start the app with `npm run dev`.
 
 Open [http://localhost:3000](http://localhost:3000). Unauthenticated requests redirect to `/login`.
 
@@ -64,14 +47,6 @@ tests/         Unit, integration, and E2E test suites
 docs/          Architecture, security, and threat model documentation
 ```
 
-## Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md).
-
 ## Security
 
 See [SECURITY.md](SECURITY.md) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
-
-## Design Spec
-
-Full foundation design: [docs/superpowers/specs/2026-09-12-personal-life-os-foundation-design.md](docs/superpowers/specs/2026-09-12-personal-life-os-foundation-design.md).

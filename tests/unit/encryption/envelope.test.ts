@@ -1,43 +1,51 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// Mock KMS before importing envelope
-vi.mock('@/lib/encryption/kms', () => ({
-  kmsEncryptDek: vi.fn(async (dek: Buffer) => Buffer.from('encrypted-' + dek.toString('base64'))),
-  kmsDecryptDek: vi.fn(async (encDek: Buffer) => {
-    const str = encDek.toString()
-    if (!str.startsWith('encrypted-')) throw new Error('bad key')
-    return Buffer.from(str.replace('encrypted-', ''), 'base64')
-  }),
-}))
+// Provide a real 32-byte test key
+const TEST_KEY = 'a'.repeat(64) // 64 hex chars = 32 bytes
 
-import { encryptData, decryptData } from '@/lib/encryption/envelope'
+beforeEach(() => {
+  vi.stubEnv('ENCRYPTION_KEY', TEST_KEY)
+})
 
-describe('Envelope Encryption', () => {
-  const aad = 'user-123:doc-456'
+import { encrypt, decrypt, encryptData, decryptData } from '@/lib/encryption/envelope'
 
-  it('roundtrip: encrypt then decrypt returns original plaintext', async () => {
+describe('Envelope Encryption (local AES-256-GCM)', () => {
+  it('roundtrip: encrypt then decrypt returns original plaintext', () => {
     const plaintext = 'super secret journal entry'
-    const payload = await encryptData(plaintext, aad)
-    const result = await decryptData(payload, aad)
+    const payload = encrypt(plaintext)
+    const result = decrypt(payload)
     expect(result).toBe(plaintext)
   })
 
-  it('encrypted payload has required fields', async () => {
-    const payload = await encryptData('test', aad)
+  it('encrypted payload has required fields', () => {
+    const payload = encrypt('test')
     expect(payload).toHaveProperty('ciphertext')
-    expect(payload).toHaveProperty('encryptedDek')
     expect(payload).toHaveProperty('iv')
-    expect(payload).toHaveProperty('keyVersion')
+    expect(payload).toHaveProperty('tag')
   })
 
-  it('fails decryption with wrong associated data (AAD)', async () => {
-    const payload = await encryptData('secret', aad)
-    await expect(decryptData(payload, 'wrong-aad')).rejects.toThrow()
-  })
-
-  it('fails decryption with tampered ciphertext', async () => {
-    const payload = await encryptData('secret', aad)
+  it('fails decryption with tampered ciphertext', () => {
+    const payload = encrypt('secret')
     const tampered = { ...payload, ciphertext: 'dGFtcGVyZWQ=' }
-    await expect(decryptData(tampered, aad)).rejects.toThrow()
+    expect(() => decrypt(tampered)).toThrow()
+  })
+
+  it('fails decryption with tampered auth tag', () => {
+    const payload = encrypt('secret')
+    const tampered = { ...payload, tag: Buffer.from('badbadbadbadbadb').toString('base64') }
+    expect(() => decrypt(tampered)).toThrow()
+  })
+
+  it('async wrappers (encryptData/decryptData) work correctly', async () => {
+    const plaintext = 'async wrapper test'
+    const payload = await encryptData(plaintext)
+    const result = await decryptData(payload)
+    expect(result).toBe(plaintext)
+  })
+
+  it('throws when ENCRYPTION_KEY is not set', () => {
+    vi.stubEnv('ENCRYPTION_KEY', '')
+    expect(() => encrypt('test')).toThrow('ENCRYPTION_KEY')
+    vi.stubEnv('ENCRYPTION_KEY', TEST_KEY)
   })
 })

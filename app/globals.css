@@ -6,59 +6,231 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  html:not(.dark) .text-amber-300,
+  html:not(.dark) .text-amber-400,
+  html:not(.dark) .text-amber-500,
+  html:not(.dark) .text-amber-600 {
+    color: #b45309;
+  }
+
+  html:not(.dark) .text-blue-300,
+  html:not(.dark) .text-blue-400,
+  html:not(.dark) .text-blue-500,
+  html:not(.dark) .text-blue-600 {
+    color: #1d4ed8;
+  }
+
+  html:not(.dark) .text-cyan-300,
+  html:not(.dark) .text-cyan-400,
+  html:not(.dark) .text-cyan-500,
+  html:not(.dark) .text-cyan-600 {
+    color: #0e7490;
+  }
+
+  html:not(.dark) .text-emerald-300,
+  html:not(.dark) .text-emerald-400,
+  html:not(.dark) .text-emerald-500,
+  html:not(.dark) .text-emerald-600 {
+    color: #047857;
+  }
+
+  html:not(.dark) .text-green-300,
+  html:not(.dark) .text-green-400,
+  html:not(.dark) .text-green-500,
+  html:not(.dark) .text-green-600 {
+    color: #15803d;
+  }
+
+  html:not(.dark) .text-indigo-300,
+  html:not(.dark) .text-indigo-400,
+  html:not(.dark) .text-indigo-500,
+  html:not(.dark) .text-indigo-600 {
+    color: #4338ca;
+  }
+
+  html:not(.dark) .text-lime-300,
+  html:not(.dark) .text-lime-400,
+  html:not(.dark) .text-lime-500,
+  html:not(.dark) .text-lime-600 {
+    color: #4d7c0f;
+  }
+
+  html:not(.dark) .text-orange-300,
+  html:not(.dark) .text-orange-400,
+  html:not(.dark) .text-orange-500,
+  html:not(.dark) .text-orange-600 {
+    color: #c2410c;
+  }
+
+  html:not(.dark) .text-pink-300,
+  html:not(.dark) .text-pink-400,
+  html:not(.dark) .text-pink-500,
+  html:not(.dark) .text-pink-600 {
+    color: #be185d;
+  }
+
+  html:not(.dark) .text-purple-300,
+  html:not(.dark) .text-purple-400,
+  html:not(.dark) .text-purple-500,
+  html:not(.dark) .text-purple-600 {
+    color: #7e22ce;
+  }
+
+  html:not(.dark) .text-red-300,
+  html:not(.dark) .text-red-400,
+  html:not(.dark) .text-red-500,
+  html:not(.dark) .text-red-600 {
+    color: #b91c1c;
+  }
+
+  html:not(.dark) .text-rose-300,
+  html:not(.dark) .text-rose-400,
+  html:not(.dark) .text-rose-500,
+  html:not(.dark) .text-rose-600 {
+    color: #be123c;
+  }
+
+  html:not(.dark) .text-sky-300,
+  html:not(.dark) .text-sky-400,
+  html:not(.dark) .text-sky-500,
+  html:not(.dark) .text-sky-600 {
+    color: #0369a1;
+  }
+
+  html:not(.dark) .text-teal-300,
+  html:not(.dark) .text-teal-400,
+  html:not(.dark) .text-teal-500,
+  html:not(.dark) .text-teal-600 {
+    color: #0f766e;
+  }
+
+  html:not(.dark) .text-violet-300,
+  html:not(.dark) .text-violet-400,
+  html:not(.dark) .text-violet-500,
+  html:not(.dark) .text-violet-600 {
+    color: #6d28d9;
+  }
+
+  html:not(.dark) .text-yellow-300,
+  html:not(.dark) .text-yellow-400,
+  html:not(.dark) .text-yellow-500,
+  html:not(.dark) .text-yellow-600 {
+    color: #a16207;
+  }
+}
+
+/* ── Zinc CSS variables ───────────────────────────────────────────────────────
+   Each shade is "R G B" (no commas) so Tailwind's opacity modifier works:
+   bg-zinc-800/30  →  rgb(var(--zinc-800) / 0.3)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Light mode: zinc scale inverted — darkest → white, lightest → near-black */
+  --zinc-50:  250 250 250;   /* #fafafa  (unchanged) */
+  --zinc-100: 17  24  39;    /* #111827  gray-900  → primary text */
+  --zinc-200: 31  41  55;    /* #1f2937  gray-800 */
+  --zinc-300: 55  65  81;    /* #374151  gray-700 */
+  --zinc-400: 75  85  99;    /* #4b5563  gray-600  → secondary text */
+  --zinc-500: 107 114 128;   /* #6b7280  gray-500  → neutral mid */
+  --zinc-600: 156 163 175;   /* #9ca3af  gray-400  → muted text */
+  --zinc-700: 209 213 219;   /* #d1d5db  gray-300  → dividers / subtle borders */
+  --zinc-800: 229 231 235;   /* #e5e7eb  gray-200  → input bg / hover surface */
+  --zinc-900: 243 244 246;   /* #f3f4f6  gray-100  → card / sidebar bg */
+  --zinc-950: 255 255 255;   /* #ffffff  white     → page bg */
+
+  /* shadcn/radix semantic tokens — light mode */
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 240 5.9% 10%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  /* Dark mode: original Tailwind zinc values */
+  --zinc-50:  250 250 250;   /* #fafafa */
+  --zinc-100: 244 244 245;   /* #f4f4f5 */
+  --zinc-200: 228 228 231;   /* #e4e4e7 */
+  --zinc-300: 212 212 216;   /* #d4d4d8 */
+  --zinc-400: 161 161 170;   /* #a1a1aa */
+  --zinc-500: 113 113 122;   /* #71717a */
+  --zinc-600: 82  82  91;    /* #52525b */
+  --zinc-700: 63  63  70;    /* #3f3f46 */
+  --zinc-800: 39  39  42;    /* #27272a */
+  --zinc-900: 24  24  27;    /* #18181b */
+  --zinc-950: 9   9   11;    /* #09090b */
+
+  /* shadcn/radix semantic tokens — dark mode */
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
 }
 
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-  }
-
   * {
     @apply border-border;
   }
 
+  /* Smooth theme transition for all colour-bearing properties */
+  *, *::before, *::after {
+    transition:
+      background-color 0.2s ease,
+      border-color     0.2s ease,
+      color            0.15s ease,
+      box-shadow       0.2s ease;
+  }
+
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+    background-image: radial-gradient(ellipse at 50% -24rem, rgb(16 185 129 / 0.055), transparent 42rem);
+    background-attachment: fixed;
+  }
+
+  .auth-background::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: radial-gradient(ellipse at 50% 0%, rgb(16 185 129 / 0.12), transparent 38rem);
+    content: '';
+    pointer-events: none;
   }
 }
